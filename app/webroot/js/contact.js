@@ -1,7 +1,6 @@
 (function ($) {
 	var apiKey;
-	var $files = $([]);
-	var loadingFiles = 0;
+	var $iframe;
 	
 	var submit = function () {
 		if (loadingFiles < 1) {
@@ -63,25 +62,37 @@
 		return false;
 	};
 	
-	var fileChange = function(e) {
-		loadingFiles++;
-		var $input = $(this);
-		var reader = new FileReader();
-		reader.onload = function(e2) {
-			$input.data('file-data', e2.target.result);
-			$input.data('file-name', e.target.files[0].name);
-			loadingFiles--;
-		};
-		reader.readAsDataURL(e.target.files[0]);
+	var createIframe = function() {
+		var $iframe = $('<iframe/>');
+		$iframe.load(function() {console.log('frame load');});
+		$iframe.attr({
+			src: _contactSetup.iframeSrc,
+			name: _contactSetup.uniqueId
+		});
+		$iframe.css('display', 'none');
+		
+		return $iframe;
+	};
+	
+	var receiveMessage = function(e) {
+		var oEvent = e.originalEvent;
+		if (oEvent.origin != _contactSetup.origin || oEvent.otherWindow != $iframe.get(0).contentWindow) {
+			return;
+		}
+		
+		var message = jQuery.parseJSON(oEvent.message);
+		if (!message || message.uniqueId != _contactSetup.uniqueId) {
+			return;
+		}
+		
+		$iframe.trigger(message.event, message.parameters);
 	};
 	
 	$.fn.contact = function (key) {
 		apiKey = key;
 		this.submit(submit);
-		if (window._fileReaderOptions) {
-			$files = this.find('[type="file"]');
-			$files.fileReader(_fileReaderOptions);
-			$files.on('change', fileChange);
-		}
+		$iframe = createIframe();
+		this.attr('target', _contactSetup.uniqueId);
+		$(window).on('message', receiveMessage);
 	};
 })(jQuery);
