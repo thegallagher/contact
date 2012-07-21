@@ -1,67 +1,19 @@
 (function ($) {
 	var apiKey;
+	var $form;
 	var $iframe;
 	
-	var submit = function () {
-		if (loadingFiles < 1) {
-			var $form = $(this), method, format;
-			if ($.support.cors) {
-				method = $.post;
-				format = 'json';
-			} else {
-				method = $.get;
-				format = 'jsonp';
-				//format = 'json';
-			}
-			
-			$form.find('.error, .form_message').remove();
-			
-			var formData = $form.serializeArray();
-			formData.push({'name': '_key', 'value': apiKey});
-			
-			if ($files.length > 0) {
-				var attachFiles = {};
-				var fileCount = 0;
-				$files.each(function() {
-					var $item = $(this);
-					var field = $item.attr('name');
-					var fileName = $item.data('file-name');
-					var fileData = $item.data('file-data');
-					if (field && fileName && fileData) {
-						attachFiles[field] = {
-							'name': fileName,
-							'data': fileData
-						};
-						fileCount++;
-					}
-				});
-				if (fileCount > 0) {
-					formData.push({'name': '_files', 'value': $.param(attachFiles)});
-				}
-			}
-			
-			method($form.attr('action') + '.json', formData, function (data) {
-				var className;
-				if (data['result']) {
-					className = 'form_message';
-					$form.get(0).reset();
-					$form.slideUp();
-				} else {
-					if (data['errors']) {
-						$.each(data['errors'], function (index, value) {
-							$form.find('[name="' + index + '"]').after('<div class="error">' + value + '</div>');
-						});
-					}
-					className = 'form_message error';
-				}
-				$form.before('<div class="' + className + '">' + data['message'] + '</div>');
-				$form.find('.error').hide().slideDown();
-				$('.form_message').hide().slideDown();
-			}, format);
-		}
-		return false;
+	// Setup the form
+	$.fn.contact = function (key) {
+		apiKey = key;
+		$form = this;
+		$form.submit(submit);
+		$iframe = createIframe();
+		$(window).on('message', receiveMessage);
+		$iframe.on('result', result);
 	};
 	
+	// Create a new iframe for sending and receiving
 	var createIframe = function() {
 		var $iframe = $('<iframe/>');
 		$iframe.load(function() {console.log('frame load');});
@@ -70,29 +22,85 @@
 			name: _contactSetup.uniqueId
 		});
 		$iframe.css('display', 'none');
+		$iframe.appendTo('body');
 		
 		return $iframe;
 	};
 	
-	var receiveMessage = function(e) {
-		var oEvent = e.originalEvent;
-		if (oEvent.origin != _contactSetup.origin || oEvent.otherWindow != $iframe.get(0).contentWindow) {
-			return;
+	// Send the API key and unique id with the form
+	var submit = function() {
+		var $messages = $form.find('.error').add('.form_message');
+		$messages.slideUp('fast', function() {
+			$messages.remove();
+		});
+		
+		var $keyInput = $form.find('input[name="_key"]');
+		if ($keyInput.length < 1) {
+			$keyInput = $('<input/>');
+			$keyInput.attr({
+				type: 'hidden',
+				name: '_key'
+			});
+			$keyInput.appendTo($form);
+		}
+		$keyInput.val(apiKey);
+		
+		var $uidInput = $form.find('input[name="_uniqueId"]');
+		if ($uidInput.length < 1) {
+			$uidInput = $('<input/>');
+			$uidInput.attr({
+				type: 'hidden',
+				name: '_uniqueId'
+			});
+			$uidInput.appendTo($form);
+		}
+		$uidInput.val(_contactSetup.uniqueId);
+		
+		if ($form.find('input[type="file"]').length > 0) {
+			$form.attr('enctype', 'multipart/form-data');
 		}
 		
-		var message = jQuery.parseJSON(oEvent.message);
-		if (!message || message.uniqueId != _contactSetup.uniqueId) {
-			return;
-		}
+		$form.attr({
+			method: 'post',
+			target: _contactSetup.uniqueId
+		});
 		
-		$iframe.trigger(message.event, message.parameters);
+		return true;
 	};
 	
-	$.fn.contact = function (key) {
-		apiKey = key;
-		this.submit(submit);
-		$iframe = createIframe();
-		this.attr('target', _contactSetup.uniqueId);
-		$(window).on('message', receiveMessage);
+	// When a message is received by this window and it is expected then trigger an event
+	var receiveMessage = function(e) {
+		var oEvent = e.originalEvent;
+		if (oEvent.origin != _contactSetup.origin) {
+			return;
+		}
+		
+		var data = $.parseJSON(oEvent.data);
+		if (!data || data.uniqueId != _contactSetup.uniqueId) {
+			return;
+		}
+		
+		var newEvent = new $.Event(data.event, {parameters: data.parameters});
+		$iframe.trigger(newEvent);
+	};
+	
+	// Event called when 'result' message received
+	var result = function(event) {
+		var className;
+		if (event.parameters.result) {
+			className = 'form_message';
+			$form.get(0).reset();
+			$form.slideUp();
+		} else {
+			if (event.parameters.errors) {
+				$.each(event.parameters.errors, function (index, value) {
+					$form.find('[name="' + index + '"]').after('<div class="error">' + value + '</div>');
+				});
+			}
+			className = 'form_message error';
+		}
+		$form.before('<div class="' + className + '">' + event.parameters.message + '</div>');
+		$form.find('.error').hide().slideDown();
+		$('.form_message').hide().slideDown();
 	};
 })(jQuery);

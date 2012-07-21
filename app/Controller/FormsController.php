@@ -9,49 +9,30 @@ class FormsController extends AppController {
 	
 	public $components = array('RequestHandler', 'MathCaptcha');
 	
-	public function options() {
+	/*public function options() {
 		$this->autoRender = false;
 		$this->response->header('Access-Control-Allow-Origin',	'*');
 		$this->response->header('Access-Control-Allow-Headers',	'X-Requested-With');
-	}
+	}*/
 	
 	public function send() {
-		// Set CORS Headers
-		$this->response->header('Access-Control-Allow-Origin',	'*');
-		$this->response->header('Access-Control-Allow-Headers',	'X-Requested-With');
-		
-		//$this->set('_serialize', array('result', 'message', 'errors'));
-		//$this->set('errors', array());
-		
-		if ($this->request->is('post')) {
-			$formData = $this->data;
-		} else {
-			$formData = $_GET;
-		}
-		
-		// JSONP
-		$callback = false;
-		if (isset($formData['callback'])) {
-			$callback = $formData['callback'];
-			unset($formData['callback']);
-		}
-		$this->set('callback', $callback);
-		
 		// Find the form
 		$this->loadModel('ApiKey');
-		$apiKey = $formData['_key'];
+		$apiKey = $this->data['_key'];
 		$form = $this->ApiKey->getForm($apiKey);
-			
+		
+		$this->set('uniqueId', $this->data['_uniqueId']);
+		
 		if ($form) {
 			// Get allowed variables
 			$data = array();
 			if (!empty($form['Form']['allowed_vars'])) {
 				$form['Form']['allowed_vars'][] = 'email';
 				foreach ($form['Form']['allowed_vars'] as $var) {
-					$data[$var] = isset($formData[$var]) ? $formData[$var] : null;
+					$data[$var] = isset($this->data[$var]) ? $this->data[$var] : null;
 				}
 			} else {
-				foreach ($formData as $key => $val) {
+				foreach ($this->data as $key => $val) {
 					if (substr($key, 0, 1) != '_') {
 						$data[$key] = $val;
 					}
@@ -70,17 +51,16 @@ class FormsController extends AppController {
 			
 			// Check attachments
 			$attachments = array();
-			if (isset($formData['_files'])) {
-				parse_str($formData['_files'], $files);
+			if (!empty($this->request->params['form'])) {
+				$files = $this->request->params['form'];
 				foreach ($files as $field => $file) {
-					$ext = pathinfo($file['name'], PATHINFO_EXTENSION);
-					if ($this->_isValidFileExt($ext, $apiKey)) {
-						$path = TMP . md5(uniqid('', true));
-						$fileData = $this->_parseDataUri($file['data']);
-						file_put_contents($path, $fileData['data']);
-						$attachments[$field . '.' . $ext] = $path;
-					} else {
-						$errors[$field] = 'File type not allowed.';
+					if (is_uploaded_file($file['tmp_name'])) {
+						$ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+						if ($this->_isValidFileExt($ext, $apiKey)) {
+							$attachments[$field . '.' . $ext] = $file['tmp_name'];
+						} else {
+							$errors[$field] = 'File type not allowed.';
+						}
 					}
 				}
 			}
@@ -139,7 +119,7 @@ class FormsController extends AppController {
 		$fileExts = explode(',', 'pdf,docx?,txt,jpe?g,png,png,ai,psd,bmp,xlsx?,csv,zip,gz,rar,bz2,mp3,wav,xps');
 		
 		foreach ($fileExts as $ext) {
-			if (preg_match('#' . preg_quote($ext, '#') . '#i', $fileExt) !== false) {
+			if (preg_match('/' . str_replace('/', '\\/', $ext) . '/i', $fileExt)) {
 				return true;
 			}
 		}
@@ -147,7 +127,7 @@ class FormsController extends AppController {
 		return false;
 	}
 	
-	protected function _parseDataUri($uri) {
+	/*protected function _parseDataUri($uri) {
 		preg_match('#data:([\w+.-]+?/[\w+.-]+?)?(?:;?charset\=([\w+.-]+?))?(;?base64)?,(.*)#i', $uri, $matches);
 		
 		if ($matches === false) {
@@ -159,7 +139,7 @@ class FormsController extends AppController {
 		$encoding = empty($matches[2]) ? 'US-ASCII' : $matches[2];
 		
 		return compact('data', 'mimeType', 'encoding');
-	}
+	}*/
 	
 	/*protected function _getEmail($data) {
 		$keys = array('email', 'email_address', 'emailaddress');
